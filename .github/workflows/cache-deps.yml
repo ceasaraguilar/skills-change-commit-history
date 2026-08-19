@@ -1,0 +1,72 @@
+name: Cache dependencies
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  cache-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node.js/npm cache (if package-lock.json or yarn.lock present)
+      - name: Setup Node.js
+        if: "exists('package-lock.json') || exists('yarn.lock')"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache npm modules
+        if: "exists('package-lock.json')"
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Restore yarn cache
+        if: "exists('yarn.lock')"
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/yarn
+          key: yarn-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            yarn-${{ runner.os }}-
+
+      - name: Install Node dependencies
+        if: "exists('package-lock.json') || exists('yarn.lock')"
+        run: |
+          if [ -f package-lock.json ]; then npm ci; elif [ -f yarn.lock ]; then yarn --frozen-lockfile; fi
+
+      # Python/pip cache (if requirements.txt or pyproject.toml exists)
+      - name: Set up Python
+        if: "exists('requirements.txt') || exists('pyproject.toml')"
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Cache pip
+        if: "exists('requirements.txt') || exists('pyproject.toml')"
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        if: "exists('requirements.txt')"
+        run: pip install -r requirements.txt
+
+      - name: Install Python deps (poetry/pyproject)
+        if: "exists('pyproject.toml') && !exists('requirements.txt')"
+        run: |
+          pip install poetry
+          poetry install --no-interaction --no-ansi
+
+      - name: Finished
+        run: echo "Dependency caches restored/updated."
